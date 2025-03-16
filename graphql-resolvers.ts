@@ -1915,8 +1915,52 @@ Mutation: {
   },
   
   removeGroupMember: async (_, { id }, context) => {
-  const userId = getUserId(context);
-  const membershipId = parseInt
+    const userId = getUserId(context);
+    const membershipId = parseInt(id);
+  
+    // Get membership details
+    const membership = await prisma.groupMember.findUnique({
+      where: { id: membershipId }
+    });
+  
+    if (!membership) {
+      throw new Error('Group membership not found');
+    }
+  
+    // Check if user is admin of the group
+    const isAdmin = await prisma.groupMember.findFirst({
+      where: {
+        groupId: membership.groupId,
+        userId,
+        role: 'admin'
+      }
+    });
+  
+    if (!isAdmin) {
+      // Check if user is a system admin
+      const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+      if (currentUser.role !== 'admin') {
+        throw new Error('Not authorized to remove group members');
+      }
+    }
+  
+    // Remove membership
+    await prisma.groupMember.delete({ where: { id: membershipId } });
+  
+    await logAuditEvent(
+      userId,
+      'GROUP_MEMBER_REMOVE',
+      'group',
+      membership.groupId,
+      { userId: membership.userId },
+      context
+    );
+  
+    return {
+      id: membershipId,
+      success: true,
+      message: 'Group member removed successfully'
+    };
   }
   }
 

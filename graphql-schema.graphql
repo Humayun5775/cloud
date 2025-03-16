@@ -1,0 +1,600 @@
+scalar DateTime
+scalar JSON
+
+type User {
+  id: ID!
+  email: String!
+  fullName: String!
+  role: UserRole!
+  department: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  lastLogin: DateTime
+  isActive: Boolean!
+  
+  # Relations
+  ownedFolders: [Folder!]!
+  ownedFiles: [File!]!
+  fileVersions: [FileVersion!]!
+  permissions: [Permission!]!
+  managedClients: [Client!]!
+  sharedByUser: [Share!]!
+  sharedWithUser: [Share!]!
+  groupMemberships: [GroupMember!]!
+  auditLogs: [AuditLog!]!
+}
+
+enum UserRole {
+  ADMIN
+  EMPLOYEE
+  CLIENT
+}
+
+type Folder {
+  id: ID!
+  name: String!
+  owner: User!
+  parentFolder: Folder
+  folderType: FolderType!
+  client: Client
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  dataClassification: DataClassification!
+  
+  # Relations
+  childFolders: [Folder!]!
+  files: [File!]!
+  folderPermissions: [Permission!]!
+  folderShares: [Share!]!
+}
+
+enum FolderType {
+  PERSONAL
+  BUSINESS
+  CLIENT
+}
+
+enum DataClassification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+type File {
+  id: ID!
+  name: String!
+  folder: Folder!
+  owner: User!
+  filePath: String!
+  fileSize: Int!
+  fileType: String!
+  version: Int!
+  isLocked: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  dataClassification: DataClassification!
+  
+  # Relations
+  fileVersions: [FileVersion!]!
+  filePermissions: [Permission!]!
+  fileShares: [Share!]!
+}
+
+type FileVersion {
+  id: ID!
+  file: File!
+  versionNumber: Int!
+  filePath: String!
+  fileSize: Int!
+  modifiedBy: User!
+  createdAt: DateTime!
+}
+
+type Client {
+  id: ID!
+  name: String!
+  email: String!
+  accountManager: User!
+  company: String
+  isBusinessClient: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relations
+  folders: [Folder!]!
+}
+
+type Permission {
+  id: ID!
+  resourceType: ResourceType!
+  resourceId: ID!
+  user: User
+  group: Group
+  accessLevel: AccessLevel!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relations (resolved fields)
+  folder: Folder
+  file: File
+}
+
+enum ResourceType {
+  FOLDER
+  FILE
+}
+
+enum AccessLevel {
+  OWNER
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+type Share {
+  id: ID!
+  resourceType: ResourceType!
+  resourceId: ID!
+  sharedBy: User!
+  sharedWithUser: User
+  sharedWithEmail: String
+  accessLevel: ShareAccess!
+  shareLink: String
+  passwordProtected: Boolean!
+  expiresAt: DateTime
+  createdAt: DateTime!
+  isActive: Boolean!
+  viewOnly: Boolean!
+  allowDownload: Boolean!
+  
+  # Relations (resolved fields)
+  folder: Folder
+  file: File
+}
+
+enum ShareAccess {
+  MANAGER
+  EDITOR
+  VIEWER
+}
+
+type Group {
+  id: ID!
+  name: String!
+  description: String
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  
+  # Relations
+  members: [GroupMember!]!
+  permissions: [Permission!]!
+}
+
+type GroupMember {
+  id: ID!
+  group: Group!
+  user: User!
+  role: GroupRole!
+  joinedAt: DateTime!
+}
+
+enum GroupRole {
+  ADMIN
+  MEMBER
+}
+
+type AuditLog {
+  id: ID!
+  user: User
+  action: String!
+  resourceType: String!
+  resourceId: ID!
+  details: JSON
+  ipAddress: String
+  userAgent: String
+  createdAt: DateTime!
+}
+
+type RetentionPolicy {
+  id: ID!
+  name: String!
+  folderType: FolderType!
+  retentionPeriod: Int!
+  autoArchive: Boolean!
+  autoDelete: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+# Queries
+type Query {
+  # User queries
+  me: User!
+  user(id: ID!): User
+  users(
+    where: UserWhereInput
+    orderBy: UserOrderByInput
+    skip: Int
+    take: Int
+  ): [User!]!
+  usersCount(where: UserWhereInput): Int!
+  
+  # Folder queries
+  folder(id: ID!): Folder
+  folders(
+    where: FolderWhereInput
+    orderBy: FolderOrderByInput
+    skip: Int
+    take: Int
+  ): [Folder!]!
+  rootFolders(folderType: FolderType): [Folder!]!
+  
+  # File queries
+  file(id: ID!): File
+  files(
+    where: FileWhereInput
+    orderBy: FileOrderByInput
+    skip: Int
+    take: Int
+  ): [File!]!
+  fileVersions(fileId: ID!): [FileVersion!]!
+  
+  # Client queries
+  client(id: ID!): Client
+  clients(
+    where: ClientWhereInput
+    orderBy: ClientOrderByInput
+    skip: Int
+    take: Int
+  ): [Client!]!
+  
+  # Share queries
+  share(id: ID!): Share
+  shares(
+    where: ShareWhereInput
+    orderBy: ShareOrderByInput
+    skip: Int
+    take: Int
+  ): [Share!]!
+  shareByLink(shareLink: String!): Share
+  myShares: [Share!]!
+  sharedWithMe: [Share!]!
+  
+  # Group queries
+  group(id: ID!): Group
+  groups(
+    where: GroupWhereInput
+    orderBy: GroupOrderByInput
+    skip: Int
+    take: Int
+  ): [Group!]!
+  myGroups: [Group!]!
+  
+  # Audit logs
+  auditLogs(
+    where: AuditLogWhereInput
+    orderBy: AuditLogOrderByInput
+    skip: Int
+    take: Int
+  ): [AuditLog!]!
+  
+  # Retention policies
+  retentionPolicies: [RetentionPolicy!]!
+}
+
+# Mutations
+type Mutation {
+  # User mutations
+  createUser(data: UserCreateInput!): User!
+  updateUser(id: ID!, data: UserUpdateInput!): User!
+  deleteUser(id: ID!): User!
+  changePassword(oldPassword: String!, newPassword: String!): Boolean!
+  
+  # Folder mutations
+  createFolder(data: FolderCreateInput!): Folder!
+  updateFolder(id: ID!, data: FolderUpdateInput!): Folder!
+  deleteFolder(id: ID!): Folder!
+  moveFolder(id: ID!, newParentId: ID): Folder!
+  
+  # File mutations
+  uploadFile(data: FileUploadInput!): File!
+  updateFile(id: ID!, data: FileUpdateInput!): File!
+  deleteFile(id: ID!): File!
+  moveFile(id: ID!, newFolderId: ID!): File!
+  lockFile(id: ID!, lock: Boolean!): File!
+  
+  # Client mutations
+  createClient(data: ClientCreateInput!): Client!
+  updateClient(id: ID!, data: ClientUpdateInput!): Client!
+  deleteClient(id: ID!): Client!
+  
+  # Permission mutations
+  setPermission(data: PermissionInput!): Permission!
+  removePermission(id: ID!): Permission!
+  
+  # Share mutations
+  createShare(data: ShareCreateInput!): Share!
+  updateShare(id: ID!, data: ShareUpdateInput!): Share!
+  deleteShare(id: ID!): Share!
+  validateSharePassword(shareLink: String!, password: String!): ShareValidation!
+  
+  # Group mutations
+  createGroup(data: GroupCreateInput!): Group!
+  updateGroup(id: ID!, data: GroupUpdateInput!): Group!
+  deleteGroup(id: ID!): Group!
+  addGroupMember(groupId: ID!, userId: ID!, role: GroupRole): GroupMember!
+  removeGroupMember(groupId: ID!, userId: ID!): GroupMember!
+  
+  # Retention policy mutations
+  createRetentionPolicy(data: RetentionPolicyInput!): RetentionPolicy!
+  updateRetentionPolicy(id: ID!, data: RetentionPolicyInput!): RetentionPolicy!
+  deleteRetentionPolicy(id: ID!): RetentionPolicy!
+}
+
+# Input types for queries
+input UserWhereInput {
+  role: UserRole
+  department: String
+  isActive: Boolean
+  createdAt_gte: DateTime
+  createdAt_lte: DateTime
+  search: String
+}
+
+input UserOrderByInput {
+  field: UserOrderField!
+  direction: OrderDirection!
+}
+
+enum UserOrderField {
+  ID
+  EMAIL
+  FULLNAME
+  ROLE
+  DEPARTMENT
+  CREATEDAT
+}
+
+input FolderWhereInput {
+  ownerId: ID
+  folderType: FolderType
+  parentFolderId: ID
+  clientId: ID
+  dataClassification: DataClassification
+  search: String
+}
+
+input FolderOrderByInput {
+  field: FolderOrderField!
+  direction: OrderDirection!
+}
+
+enum FolderOrderField {
+  ID
+  NAME
+  OWNER
+  CREATEDAT
+  UPDATEDAT
+}
+
+input FileWhereInput {
+  folderId: ID
+  ownerId: ID
+  fileType: String
+  dataClassification: DataClassification
+  search: String
+}
+
+input FileOrderByInput {
+  field: FileOrderField!
+  direction: OrderDirection!
+}
+
+enum FileOrderField {
+  ID
+  NAME
+  FILESIZE
+  CREATEDAT
+  UPDATEDAT
+}
+
+input ClientWhereInput {
+  accountManagerId: ID
+  isBusinessClient: Boolean
+  search: String
+}
+
+input ClientOrderByInput {
+  field: ClientOrderField!
+  direction: OrderDirection!
+}
+
+enum ClientOrderField {
+  ID
+  NAME
+  COMPANY
+  CREATEDAT
+}
+
+input ShareWhereInput {
+  resourceType: ResourceType
+  resourceId: ID
+  sharedById: ID
+  sharedWithUserId: ID
+  sharedWithEmail: String
+  isActive: Boolean
+  expiresAt_gt: DateTime
+}
+
+input ShareOrderByInput {
+  field: ShareOrderField!
+  direction: OrderDirection!
+}
+
+enum ShareOrderField {
+  ID
+  CREATEDAT
+  EXPIRESAT
+}
+
+input GroupWhereInput {
+  search: String
+}
+
+input GroupOrderByInput {
+  field: GroupOrderField!
+  direction: OrderDirection!
+}
+
+enum GroupOrderField {
+  ID
+  NAME
+  CREATEDAT
+}
+
+input AuditLogWhereInput {
+  userId: ID
+  action: String
+  resourceType: String
+  resourceId: ID
+  createdAt_gte: DateTime
+  createdAt_lte: DateTime
+}
+
+input AuditLogOrderByInput {
+  field: AuditLogOrderField!
+  direction: OrderDirection!
+}
+
+enum AuditLogOrderField {
+  ID
+  ACTION
+  CREATEDAT
+}
+
+enum OrderDirection {
+  ASC
+  DESC
+}
+
+# Input types for mutations
+input UserCreateInput {
+  email: String!
+  fullName: String!
+  password: String!
+  role: UserRole!
+  department: String
+}
+
+input UserUpdateInput {
+  email: String
+  fullName: String
+  role: UserRole
+  department: String
+  isActive: Boolean
+}
+
+input FolderCreateInput {
+  name: String!
+  parentFolderId: ID
+  folderType: FolderType!
+  clientId: ID
+  dataClassification: DataClassification
+}
+
+input FolderUpdateInput {
+  name: String
+  dataClassification: DataClassification
+}
+
+input FileUploadInput {
+  name: String!
+  folderId: ID!
+  file: Upload!
+  dataClassification: DataClassification
+}
+
+input FileUpdateInput {
+  name: String
+  dataClassification: DataClassification
+}
+
+input ClientCreateInput {
+  name: String!
+  email: String!
+  company: String
+  isBusinessClient: Boolean
+}
+
+input ClientUpdateInput {
+  name: String
+  email: String
+  company: String
+  accountManagerId: ID
+  isBusinessClient: Boolean
+}
+
+input PermissionInput {
+  resourceType: ResourceType!
+  resourceId: ID!
+  userId: ID
+  groupId: ID
+  accessLevel: AccessLevel!
+}
+
+input ShareCreateInput {
+  resourceType: ResourceType!
+  resourceId: ID!
+  sharedWithUserId: ID
+  sharedWithEmail: String
+  accessLevel: ShareAccess!
+  passwordProtect: Boolean
+  password: String
+  expiresAt: DateTime
+  viewOnly: Boolean
+  allowDownload: Boolean
+}
+
+input ShareUpdateInput {
+  accessLevel: ShareAccess
+  passwordProtect: Boolean
+  password: String
+  expiresAt: DateTime
+  isActive: Boolean
+  viewOnly: Boolean
+  allowDownload: Boolean
+}
+
+input GroupCreateInput {
+  name: String!
+  description: String
+  initialMembers: [GroupMemberInput!]
+}
+
+input GroupUpdateInput {
+  name: String
+  description: String
+}
+
+input GroupMemberInput {
+  userId: ID!
+  role: GroupRole
+}
+
+input RetentionPolicyInput {
+  name: String!
+  folderType: FolderType!
+  retentionPeriod: Int!
+  autoArchive: Boolean!
+  autoDelete: Boolean!
+}
+
+# Custom types
+type ShareValidation {
+  valid: Boolean!
+  share: Share
+}
+
+# File upload scalar
+scalar Upload

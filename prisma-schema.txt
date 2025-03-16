@@ -1,0 +1,277 @@
+// This is your Prisma schema file
+// Learn more about it at https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int            @id @default(autoincrement())
+  email              String         @unique
+  fullName           String         @map("full_name")
+  passwordHash       String         @map("password_hash")
+  role               UserRole       @default(employee)
+  department         String?
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  lastLogin          DateTime?      @map("last_login")
+  isActive           Boolean        @default(true) @map("is_active")
+  
+  // Relations
+  ownedFolders       Folder[]       @relation("FolderOwner")
+  ownedFiles         File[]         @relation("FileOwner")
+  fileVersions       FileVersion[]  @relation("FileVersionModifier")
+  permissions        Permission[]   @relation("UserPermission")
+  managedClients     Client[]       @relation("ClientManager")
+  sharedByUser       Share[]        @relation("ShareCreator")
+  sharedWithUser     Share[]        @relation("ShareReceiver")
+  groupMemberships   GroupMember[]
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  admin
+  employee
+  client
+
+  @@map("user_role")
+}
+
+model Folder {
+  id                 Int                @id @default(autoincrement())
+  name               String
+  ownerId            Int                @map("owner_id")
+  parentFolderId     Int?               @map("parent_folder_id")
+  folderType         FolderType
+  clientId           Int?               @map("client_id")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  dataClassification DataClassification @default(internal) @map("data_classification")
+  
+  // Relations
+  owner              User               @relation("FolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  parentFolder       Folder?            @relation("FolderHierarchy", fields: [parentFolderId], references: [id], onDelete: Cascade)
+  childFolders       Folder[]           @relation("FolderHierarchy")
+  files              File[]
+  folderPermissions  Permission[]       @relation("FolderPermission")
+  folderShares       Share[]            @relation("FolderShare")
+  client             Client?            @relation(fields: [clientId], references: [id])
+
+  @@map("folders")
+}
+
+enum FolderType {
+  personal
+  business
+  client
+
+  @@map("folder_type")
+}
+
+enum DataClassification {
+  public
+  internal
+  confidential
+  restricted
+
+  @@map("data_classification")
+}
+
+model File {
+  id                 Int                @id @default(autoincrement())
+  name               String
+  folderId           Int                @map("folder_id")
+  ownerId            Int                @map("owner_id")
+  filePath           String             @map("file_path")
+  fileSize           BigInt             @map("file_size")
+  fileType           String             @map("file_type")
+  version            Int                @default(1)
+  isLocked           Boolean            @default(false) @map("is_locked")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  dataClassification DataClassification @default(internal) @map("data_classification")
+  
+  // Relations
+  folder             Folder             @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  owner              User               @relation("FileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  fileVersions       FileVersion[]
+  filePermissions    Permission[]       @relation("FilePermission")
+  fileShares         Share[]            @relation("FileShare")
+
+  @@map("files")
+}
+
+model FileVersion {
+  id             Int      @id @default(autoincrement())
+  fileId         Int      @map("file_id")
+  versionNumber  Int      @map("version_number")
+  filePath       String   @map("file_path")
+  fileSize       BigInt   @map("file_size")
+  modifiedById   Int      @map("modified_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  file           File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  modifiedBy     User     @relation("FileVersionModifier", fields: [modifiedById], references: [id])
+
+  @@map("file_versions")
+}
+
+model Client {
+  id               Int      @id @default(autoincrement())
+  name             String
+  email            String
+  accountManagerId Int      @map("account_manager_id")
+  company          String?
+  isBusinessClient Boolean  @default(false) @map("is_business_client")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  accountManager   User     @relation("ClientManager", fields: [accountManagerId], references: [id])
+  folders          Folder[]
+
+  @@map("clients")
+}
+
+model Permission {
+  id           Int           @id @default(autoincrement())
+  resourceType ResourceType
+  resourceId   Int           @map("resource_id")
+  userId       Int?          @map("user_id")
+  groupId      Int?          @map("group_id")
+  accessLevel  AccessLevel   @default(viewer)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  user         User?         @relation("UserPermission", fields: [userId], references: [id], onDelete: Cascade)
+  folder       Folder?       @relation("FolderPermission", fields: [resourceId], references: [id], onDelete: Cascade)
+  file         File?         @relation("FilePermission", fields: [resourceId], references: [id], onDelete: Cascade)
+  group        Group?        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@map("permissions")
+}
+
+enum ResourceType {
+  folder
+  file
+
+  @@map("resource_type")
+}
+
+enum AccessLevel {
+  owner
+  manager
+  editor
+  viewer
+
+  @@map("access_level")
+}
+
+model Share {
+  id                Int           @id @default(autoincrement())
+  resourceType      ResourceType
+  resourceId        Int           @map("resource_id")
+  sharedById        Int           @map("shared_by")
+  sharedWithUserId  Int?          @map("shared_with_user_id")
+  sharedWithEmail   String?       @map("shared_with_email")
+  accessLevel       ShareAccess   @default(viewer)
+  shareLink         String?       @unique @map("share_link")
+  passwordProtected Boolean       @default(false) @map("password_protected")
+  passwordHash      String?       @map("password_hash")
+  expiresAt         DateTime?     @map("expires_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  isActive          Boolean       @default(true) @map("is_active")
+  viewOnly          Boolean       @default(false) @map("view_only")
+  allowDownload     Boolean       @default(true) @map("allow_download")
+  
+  // Relations
+  sharedBy          User          @relation("ShareCreator", fields: [sharedById], references: [id])
+  sharedWithUser    User?         @relation("ShareReceiver", fields: [sharedWithUserId], references: [id], onDelete: Cascade)
+  folder            Folder?       @relation("FolderShare", fields: [resourceId], references: [id], onDelete: Cascade)
+  file              File?         @relation("FileShare", fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@map("shares")
+}
+
+enum ShareAccess {
+  manager
+  editor
+  viewer
+
+  @@map("share_access")
+}
+
+model Group {
+  id          Int           @id @default(autoincrement())
+  name        String
+  description String?       @db.Text
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  members     GroupMember[]
+  permissions Permission[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id        Int       @id @default(autoincrement())
+  groupId   Int       @map("group_id")
+  userId    Int       @map("user_id")
+  role      GroupRole @default(member)
+  joinedAt  DateTime  @default(now()) @map("joined_at")
+  
+  // Relations
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_members")
+}
+
+enum GroupRole {
+  admin
+  member
+
+  @@map("group_role")
+}
+
+model AuditLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int?     @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   Int      @map("resource_id")
+  details      Json?
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  userAgent    String?  @map("user_agent") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model RetentionPolicy {
+  id              Int        @id @default(autoincrement())
+  name            String
+  folderType      FolderType
+  retentionPeriod Int        @map("retention_period") // days
+  autoArchive     Boolean    @default(false) @map("auto_archive")
+  autoDelete      Boolean    @default(false) @map("auto_delete")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  @@map("retention_policies")
+}

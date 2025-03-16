@@ -713,8 +713,130 @@ export const resolvers = {
         where: { id: parseInt(id) }
       });
     }
-  },
   
+    getUser: async (_, { id }, context) => {
+      const userId = getUserId(context);
+      const requestedUserId = parseInt(id);
+
+      // Only allow users to fetch their own data or admins to fetch any user's data
+      if (userId !== requestedUserId) {
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        if (currentUser.role !== 'admin') {
+          throw new Error('Not authorized to fetch this user data');
+        }
+      }
+
+      return prisma.user.findUnique({ where: { id: requestedUserId } });
+    },
+
+    getFolder: async (_, { id }, context) => {
+      const userId = getUserId(context);
+      const folderId = parseInt(id);
+
+      try {
+        await checkPermission(userId, 'folder', folderId, 'viewer');
+      } catch (error) {
+        throw new Error('Not authorized to access this folder');
+      }
+
+      return prisma.folder.findUnique({ where: { id: folderId } });
+    },
+
+    getFile: async (_, { id }, context) => {
+      const userId = getUserId(context);
+      const fileId = parseInt(id);
+
+      try {
+        await checkPermission(userId, 'file', fileId, 'viewer');
+      } catch (error) {
+        throw new Error('Not authorized to access this file');
+      }
+
+      return prisma.file.findUnique({ where: { id: fileId } });
+    },
+
+    listFolderContents: async (_, { folderId }, context) => {
+      const userId = getUserId(context);
+      const folderIdInt = parseInt(folderId);
+
+      try {
+        await checkPermission(userId, 'folder', folderIdInt, 'viewer');
+      } catch (error) {
+        throw new Error('Not authorized to access this folder');
+      }
+
+      const folders = await prisma.folder.findMany({
+        where: { parentId: folderIdInt }
+      });
+
+      const files = await prisma.file.findMany({
+        where: { folderId: folderIdInt }
+      });
+
+      return { folders, files };
+    },
+
+    getGroup: async (_, { id }, context) => {
+      const userId = getUserId(context);
+      const groupId = parseInt(id);
+
+      const membership = await prisma.groupMember.findFirst({
+        where: { groupId, userId }
+      });
+
+      if (!membership) {
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        if (currentUser.role !== 'admin') {
+          throw new Error('Not authorized to access this group');
+        }
+      }
+
+      return prisma.group.findUnique({ where: { id: groupId } });
+    },
+
+    listGroups: async (_, __, context) => {
+      const userId = getUserId(context);
+      const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+
+      if (currentUser.role === 'admin') {
+        return prisma.group.findMany();
+      } else {
+        const memberships = await prisma.groupMember.findMany({
+          where: { userId },
+          select: { groupId: true }
+        });
+        const groupIds = memberships.map(m => m.groupId);
+        return prisma.group.findMany({
+          where: { id: { in: groupIds } }
+        });
+      }
+    },
+
+    getShare: async (_, { id }, context) => {
+      const userId = getUserId(context);
+      const shareId = parseInt(id);
+
+      const share = await prisma.share.findUnique({ where: { id: shareId } });
+
+      if (!share) {
+        throw new Error('Share not found');
+      }
+
+      if (share.sharedById !== userId) {
+        const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+        if (currentUser.role !== 'admin') {
+          throw new Error('Not authorized to access this share');
+        }
+      }
+
+      return share;
+    },
+
+    listUserShares: async (_, __, context) => {
+      const userId = getUserId(context);
+      return prisma.share.findMany({ where: { sharedById: userId } });
+    },
+  },
 
   
 
@@ -1962,6 +2084,75 @@ Mutation: {
       message: 'Group member removed successfully'
     };
   }
-  }
+},
 
+
+
+
+ // Add custom type resolvers
+ User: {
+  groups: async (parent, _, context) => {
+    return prisma.groupMember.findMany({
+      where: { userId: parent.id },
+      include: { group: true }
+    }).then(memberships => memberships.map(m => m.group));
+  }
+},
+
+Group: {
+  members: async (parent, _, context) => {
+    return prisma.groupMember.findMany({
+      where: { groupId: parent.id },
+      include: { user: true }
+    }).then(memberships => memberships.map(m => ({
+      ...m.user,
+      role: m.role
+    })));
+  }
+},
+
+Folder: {
+  parent: async (parent, _, context) => {
+    if (!parent.parentId) return null;
+    return prisma.folder.findUnique({ where: { id: parent.parentId } });
+  },
+  subfolders: async (parent, _, context) => {
+    return prisma.folder.findMany({ where: { parentId: parent.id } });
+  },
+  files: async (parent, _, context) => {
+    return prisma.file.findMany({ where: { folderId: parent.id } });
+  }
+},
+
+File: {
+  folder: async (parent, _, context) => {
+    return prisma.folder.findUnique({ where: { id: parent.folderId } });
+  },
+  versions: async (parent, _, context) => {
+    return prisma.fileVersion.findMany({
+      where: { fileId: parent.id },
+      orderBy: { versionNumber: 'desc' }
+    });
+  }
+},
+
+Share: {
+  resource: async (parent, _, context) => {
+    if (parent.resourceType === 'folder') {
+      return prisma.folder.findUnique({ where: { id: parent.resourceId } });
+    } else if (parent.resourceType === 'file') {
+      return prisma.file.findUnique({ where: { id: parent.resourceId } });
+    }
+    return null;
+  },
+  sharedBy: async (parent, _, context) => {
+    return prisma.user.findUnique({ where: { id: parent.sharedById } });
+  },
+  sharedWithUser: async (parent, _, context) => {
+    if (!parent.sharedWithUserId) return null;
+    return prisma.user.findUnique({ where: { id: parent.sharedWithUserId } });
+  }
 }
+};
+
+export default resolvers;
